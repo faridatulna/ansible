@@ -2,13 +2,22 @@
 
   vars:
     nodes:
-      - mariadb1
-      - mariadb2
-      - mariadb3
+      - mariadb-node-1
+      - mariadb-node-2
+      - mariadb-node-3
   
   roles: 
     - multipass_instance
-    
+
+- hosts: mariadb-servers
+  tasks:
+  - name: Install mariadb-server if not yet installed
+    apt:
+      name: mariadb-server
+      state: present
+      update_cache: true
+    become: true
+
 
 # roles: 
 # multipass instance
