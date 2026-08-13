@@ -1,0 +1,44 @@
+- hosts: localhost
+  tasks:
+    - name: Make sure Multipass is installed
+      command: multipass version
+      register: multipass_version
+    
+    - name: Check if multipass is installed
+      fail:
+        msg: "Multipass is not installed. Please install it before running this playbook."
+      when: multipass_version.rc != 0
+
+    - name: Install Multipass
+      apt:
+        name: multipass
+        state: present
+      when: multipass_version.rc == 0
+
+    - name: Create three multipass instances
+      command: multipass launch 24.04 --name {{ item }}
+      with_items:
+        - mariadb1
+        - mariadb2
+        - mariadb3
+
+    - name: Wait until each instance reports an IP address
+      command: multipass info {{ item }} --format json
+      register: instance_info
+      until: (instance_info.stdout | from_json).info[item].ipv4 | default([]) | length > 0
+      retries: 2
+      delay: 2
+      with_items:
+        - mariadb1
+        - mariadb2
+        - mariadb3
+
+    - name: Write hostname and IP to file
+      lineinfile:
+        path: "{{ playbook_dir }}/instance_info.txt"
+        regexp: "^{{ item.item }} "
+        line: "{{ item.item }} {{ (item.stdout | from_json).info[item.item].ipv4[0] }}"
+        create: true
+      loop: "{{ instance_info.results }}"
+
+
