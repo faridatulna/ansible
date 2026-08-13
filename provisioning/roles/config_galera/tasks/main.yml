@@ -1,0 +1,74 @@
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Stop mariadb
+  ansible.builtin.systemd:
+    name: mariadb
+    state: stopped
+    enabled: false
+  become: true
+  when: ansible_facts.services['mariadb.service'].state != 'stopped'
+
+- name: Config galera.cnf for first node first node "{{ inventory_hostname }}"
+  template:
+    src: templates/galera.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
+  vars:
+    CLUSTER_NAME: "{{ cluster_name }}"
+    CLUSTER_ADDRESS: "{{ ansible_host }}"
+    HOST_ADDRESS: "{{ ansible_host }}"
+    HOST_NAME: "{{ inventory_hostname }}"
+    SST_DONOR: ""
+  become: true
+  when: groups['mariadb-servers'][0] == inventory_hostname
+
+- name: Config galera.cnf for joining nodes
+  template:
+    src: templates/galera.cnf.j2
+    dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
+  vars:
+    CLUSTER_NAME: "{{ cluster_name }}"
+    CLUSTER_ADDRESS: "{{ groups['mariadb-servers'][(groups['mariadb-servers'].index(inventory_hostname) - 1):(groups['mariadb-servers'].index(inventory_hostname) + 1)] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
+    HOST_ADDRESS: "{{ ansible_host }}"
+    HOST_NAME: "{{ inventory_hostname }}"
+    SST_DONOR: "{{ groups['mariadb-servers'][groups['mariadb-servers'].index(inventory_hostname) - 1] }}"
+  become: true
+  when: groups['mariadb-servers'][0] != inventory_hostname
+
+- name: Bootstrap galera cluster on first node
+  command: galera_new_cluster
+  become: true
+  when: inventory_hostname == groups['mariadb-servers'][0]
+
+- name: Start mariadb on remaining nodes
+  ansible.builtin.systemd:
+    name: mariadb
+    state: started
+  become: true
+  when: inventory_hostname != groups['mariadb-servers'][0]
+
+- name: Check wsrep cluster size
+  ansible.builtin.command: mysql -N -B -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+  register: wsrep_cluster_size
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Check wsrep ready status
+  ansible.builtin.command: mysql -N -B -e "SHOW STATUS LIKE 'wsrep_ready';"
+  register: wsrep_ready_status
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Determine if this node is fully up in the cluster
+  ansible.builtin.set_fact:
+    galera_cluster_up: >-
+      {{ (wsrep_cluster_size.stdout | default('') | trim).split() | last | default('0') | int == groups['mariadb-servers'] | length
+         and (wsrep_ready_status.stdout | default('') | trim).split() | last | default('OFF') == 'ON' }}
+
+- name: is galera cluster up?
+  debug:
+    msg: "galera cluster up: ok"
+  when: galera_cluster_up
+
