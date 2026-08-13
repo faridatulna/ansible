@@ -1,0 +1,45 @@
+- name: Make sure Multipass is installed
+  command: multipass version
+  register: multipass_version
+  ignore_errors: true
+
+- name: Install Multipass if not installed
+  apt:
+    name: multipass
+    state: present
+  become: true
+  when: multipass_version.rc != 0
+
+- name: Check existing multipass instances
+  command: multipass list --format json
+  register: existing_multipass
+  changed_when: false
+
+- name: Create three multipass instances
+  command: multipass launch 24.04 --name {{ item }}
+  when: item not in (existing_multipass.stdout | from_json).list | map(attribute='name') | list
+  with_items:
+    - mariadb1
+    - mariadb2
+    - mariadb3
+
+- name: Wait until each instance reports an IP address
+  command: multipass info {{ item }} --format json
+  register: multipass_instances
+  until: (multipass_instances.stdout | from_json).info[item].ipv4 | default([]) | length > 0
+  retries: 1
+  delay: 3
+  with_items:
+    - mariadb1
+    - mariadb2
+    - mariadb3
+
+- name: Build instance IP map
+  set_fact:
+    instance_info: "{{ (instance_info | default([])) + [{'hostname': item.item, 'ipv4': (item.stdout | from_json).info[item.item].ipv4[0]}] }}"
+  loop: "{{ multipass_instances.results }}"
+
+- name: Write hostname and IP to file as JSON
+  copy:
+    dest: "{{ playbook_dir }}/multipass_instances.json"
+    content: "{{ instance_info | to_nice_json }}"
