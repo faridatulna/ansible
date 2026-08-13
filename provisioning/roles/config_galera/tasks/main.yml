@@ -46,29 +46,3 @@
     state: started
   become: true
   when: inventory_hostname != groups['mariadb-servers'][0]
-
-- name: Check wsrep cluster size
-  ansible.builtin.command: mysql -N -B -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
-  register: wsrep_cluster_size
-  changed_when: false
-  failed_when: false
-  become: true
-
-- name: Check wsrep ready status
-  ansible.builtin.command: mysql -N -B -e "SHOW STATUS LIKE 'wsrep_ready';"
-  register: wsrep_ready_status
-  changed_when: false
-  failed_when: false
-  become: true
-
-- name: Determine if this node is fully up in the cluster
-  ansible.builtin.set_fact:
-    galera_cluster_up: >-
-      {{ (wsrep_cluster_size.stdout | default('') | trim).split() | last | default('0') | int == groups['mariadb-servers'] | length
-         and (wsrep_ready_status.stdout | default('') | trim).split() | last | default('OFF') == 'ON' }}
-
-- name: is galera cluster up?
-  debug:
-    msg: "galera cluster up: ok"
-  when: galera_cluster_up
-

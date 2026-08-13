@@ -10,60 +10,13 @@
     - multipass_instance
 
 - hosts: mariadb-servers
-  tasks:
-  - name: Install mariadb-server
-    apt:
-      name: mariadb-server
-      state: present
-      update_cache: true
-    become: true
-  
-  - name: Gather service facts
-    ansible.builtin.service_facts:
 
-  - name: Stop mariadb
-    ansible.builtin.systemd:
-      name: mariadb
-      state: stopped
-      enabled: false
-    become: true
-    when: ansible_facts.services['mariadb.service'].state != 'stopped'
+  vars:
+    cluster_name: mariadb-cluster
 
-  - name: Config galera.cnf for first node first node "{{ inventory_hostname }}"
-    template:
-      src: templates/galera.cnf.j2
-      dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
-    vars:
-      CLUSTER_NAME: mariadb-cluster
-      CLUSTER_ADDRESS: "{{ ansible_host }}"
-      HOST_ADDRESS: "{{ ansible_host }}"
-      HOST_NAME: "{{ inventory_hostname }}"
-      SST_DONOR: ""
-    become: true
-    when: groups['mariadb-servers'][0] == inventory_hostname
-
-  - name: Config galera.cnf for joining nodes
-    template:
-      src: templates/galera.cnf.j2
-      dest: /etc/mysql/mariadb.conf.d/60-galera.cnf
-    vars:
-      CLUSTER_NAME: mariadb-cluster
-      CLUSTER_ADDRESS: "{{ groups['mariadb-servers'][(groups['mariadb-servers'].index(inventory_hostname) - 1):(groups['mariadb-servers'].index(inventory_hostname) + 1)] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
-      HOST_ADDRESS: "{{ ansible_host }}"
-      HOST_NAME: "{{ inventory_hostname }}"
-      SST_DONOR: "{{ groups['mariadb-servers'][groups['mariadb-servers'].index(inventory_hostname) - 1] }}"
-    become: true
-    when: groups['mariadb-servers'][0] != inventory_hostname
-
-
-
-# roles: 
-# multipass instance
-# mariadb
-# galera
-# check wsrep
-
-# tasks:
-# db
+  roles:
+    - mariadb
+    - config_galera
+    - check_cluster_status
 
 
