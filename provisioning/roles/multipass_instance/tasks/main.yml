@@ -33,7 +33,15 @@
     instance_info: "{{ (instance_info | default([])) + [{'hostname': item.item, 'ipv4': (item.stdout | from_json).info[item.item].ipv4[0]}] }}"
   loop: "{{ multipass_instances.results }}"
 
-- name: Write hostname and IP to file as JSON
-  copy:
-    dest: "{{ playbook_dir }}/multipass_instances.json"
-    content: "{{ instance_info | to_nice_json }}"
+- name: Add created instance to inventory host
+  add_host:
+    name: "{{ item.hostname }}"
+    groupname: "mariadb-servers"
+    ansible_host: '{{ item.ipv4 }}'
+    ansible_user: ubuntu
+    ansible_become: yes
+    ansible_ssh_private_key_file: ~/.ssh/id_multipass_rsa
+    ansible_python_interpreter: /usr/bin/python3
+    host_key_checking: false
+  when: instance_info | length > 0
+  with_items: "{{ instance_info }}"
