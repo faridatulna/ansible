@@ -1,11 +1,14 @@
 - hosts: localhost
+
+  vars:
+    nodes:
+      - mariadb1
+      - mariadb2
+      - mariadb3
   
   roles: 
     - multipass_instance
     
-
-    
-
 
 # roles: 
 # multipass instance
